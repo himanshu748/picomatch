@@ -359,6 +359,45 @@ describe('picomatch', () => {
       assert.deepStrictEqual(scan('a/b/*/c', { tokens: true }).parts, ['a', 'b', '*', 'c']);
     });
 
+    it('should populate tokens for a single path segment', () => {
+      for (const pattern of ['foo', '*', '**', '*.js', '!foo', '!*', '!**']) {
+        const state = scan(pattern, { tokens: true });
+        const value = pattern.replace(/^!/, '');
+        const expectedDepth = value === '**' ? Infinity : 1;
+        assert.strictEqual(state.tokens.length, 1, pattern);
+        assert.strictEqual(state.tokens[0].value, value, pattern);
+        assert.strictEqual(state.tokens[0].depth, expectedDepth, pattern);
+        assert.strictEqual(state.maxDepth, expectedDepth, pattern);
+      }
+    });
+
+    it('should populate the final token after a relative prefix or root slash', () => {
+      for (const pattern of ['./foo', '!./foo', './!foo', '/foo', '/*', '/**']) {
+        const state = scan(pattern, { tokens: true });
+        const value = pattern.slice(pattern.lastIndexOf('/') + 1).replace(/^!/, '');
+        const expectedDepth = value === '**' ? Infinity : 1;
+        const last = state.tokens[state.tokens.length - 1];
+        assert.strictEqual(last.value, value, pattern);
+        assert.strictEqual(last.depth, expectedDepth, pattern);
+        assert.strictEqual(state.maxDepth, state.tokens[0].depth + expectedDepth, pattern);
+      }
+    });
+
+    it('should preserve token depths for empty inputs and trailing separators', () => {
+      for (const [pattern, values, maxDepth] of [
+        ['', [''], 0],
+        ['./', ['./'], 0],
+        ['foo/', ['foo'], 1],
+        ['foo/bar/', ['foo', 'bar'], 2],
+        ['foo/bar', ['foo', 'bar'], 2],
+        ['foo/**', ['foo', '**'], Infinity]
+      ]) {
+        const state = scan(pattern, { tokens: true });
+        assert.deepStrictEqual(state.tokens.map(token => token.value), values, pattern);
+        assert.strictEqual(state.maxDepth, maxDepth, pattern);
+      }
+    });
+
     it('should split only on unnested and unescaped path separators', () => {
       assertParts('/dev\\/@(tcp|udp)\\/*\\/*', ['', 'dev\\/@(tcp|udp)\\/*\\/*']);
       assertParts('!(!(bar)/baz)', ['!(!(bar)/baz)']);
